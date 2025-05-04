@@ -1,0 +1,251 @@
+---
+title: "pad_guia_1_ejercicio_1"
+author: "eze_mz"
+date: "2025-03-27"
+output: html_document
+---
+
+```{r}
+setwd("/mnt/Nuevo vol/GENERAL/MAESTRÍA ESTADÍSTICA/PAD/FINAL_DEC")
+#### Load libraries ####
+library(tidyverse)
+library(ggplot2)
+library(skimr)
+#library(dlookr)
+library(janitor)
+library(purrr)
+library(car)
+library(MASS)
+library(dplyr)
+```
+
+```{r}
+# transform shelf to factor
+UScereal$shelf = as.factor(UScereal$shelf)
+# columns and levels
+names(UScereal)
+levels(UScereal$mfr)
+levels(UScereal$vitamins)
+```
+
+```{r}
+summary(UScereal$mfr)
+```
+```{r}
+summary(UScereal$vitamins)
+```
+
+```{r}
+summary(UScereal$shelf)
+```
+
+```{r}
+skim(UScereal)
+```
+
+```{r}
+# Describe categorical variables
+UScereal %>%  
+  tabyl(mfr, shelf, vitamins) %>%
+  adorn_totals("row") %>%
+  adorn_percentages("all") %>%
+  adorn_pct_formatting(digits = 1) %>%
+  adorn_ns %>%
+  adorn_title()
+```
+
+```{r}
+# Grouped summary
+# problem with function names
+#select()	dplyr
+#select()	MASS
+
+UScereal %>% 
+  dplyr::select(mfr, where(is.numeric)) %>% 
+  dplyr::group_by(mfr) %>%
+  skimr::skim()
+
+UScereal %>% 
+  dplyr::select(shelf, where(is.numeric)) %>% 
+  dplyr::group_by(shelf) %>%
+  skimr::skim()
+
+UScereal %>% 
+  dplyr::select(vitamins, where(is.numeric)) %>% 
+  dplyr::group_by(vitamins) %>%
+  skimr::skim()
+
+```
+
+```{r}
+UScereal %>% 
+  ggplot(aes(shelf, calories, color = mfr)) + 
+  geom_boxplot() +
+  geom_point(position = position_jitterdodge(jitter.width = 0.4))
+```
+
+```{r}
+UScereal %>% 
+  ggplot(aes(shelf, protein, color = mfr)) + 
+  geom_boxplot() +
+  geom_point(position = position_jitterdodge(jitter.width = 0.4))
+```
+
+```{r}
+# Identify all numeric columns
+numeric_vars <- UScereal %>%
+  dplyr::select(where(is.numeric)) %>%
+  names()
+
+# Loop over numeric variables and print a boxplot for each
+for (col in numeric_vars) {
+  p <- ggplot(UScereal, aes(x = shelf, y = .data[[col]])) +
+    geom_boxplot() +
+    labs(
+      title = paste("Boxplot of", col, "by shelf"),
+      x = "Shelf",
+      y = col
+    )
+  print(p)
+}
+```
+
+# Pruebas ANOVA para la variable respuesta "sugar"
+
+```{r}
+sugars_df = UScereal %>% dplyr::select(sugars, shelf)
+sugars_general_mean = mean(sugars_df$sugars)
+sugars_mean_per_shelf = sugars_df %>% 
+  dplyr::group_by(shelf) %>% 
+  dplyr::summarize(
+    mean_sugars = mean(sugars),
+    count = n() # Add a column named "count" with the number of observations
+    )
+#SSTr = (sugars_mean_per_shelf$mean_sugars - sugars_general_mean)**2 %>% sum()
+
+# Calculate SSTr
+# dplyr PARA ALGUNAS COSAS ES UN QUILOMBO (o lo estoy usando mal)
+SSTr <- sugars_mean_per_shelf %>%
+  mutate(squared_deviation = (mean_sugars - sugars_general_mean)^2) %>%
+  mutate(weighted_squared_deviation = squared_deviation * count) %>%
+  summarize(SSTr = sum(weighted_squared_deviation)) %>%
+  pull(SSTr)
+
+SSTr
+```
+
+```{r}
+sugars_mean_per_shelf
+```
+
+```{r}
+SST = sum((sugars_df$sugars - sugars_general_mean)**2)
+SST
+```
+
+```{r}
+SSE = SST - SSTr
+SSE
+```
+
+```{r}
+MSTr = SSTr / (length(unique(sugars_df$shelf)) - 1)
+MSTr
+```
+
+```{r}
+# I(J-1) = total de observaciones menos la cantidad de niveles de la variable
+MSE = SSE / (length(sugars_df$sugars) - length(unique(sugars_df$shelf)))
+MSE
+```
+
+```{r}
+# ANOVA
+sugars_df$shelf = as.factor(sugars_df$shelf)
+sugar_shelf_aov = aov(sugars ~ shelf, data = sugars_df)
+summary(sugar_shelf_aov)
+```
+
+```{r}
+# OTRA FORMA DE HACERLLO (CHATGPT)
+# Cargar los datos
+datos <- read.csv("sugars_df.csv")
+
+# Calcular la media global
+media_global <- mean(datos$sugars)
+
+# Suma de cuadrados total (SST)
+SST <- sum((datos$sugars - media_global)^2)
+
+# Calcular las medias por tratamiento y el tamaño de cada grupo
+medias_trat <- tapply(datos$sugars, datos$shelf, mean)
+n_j <- tapply(datos$sugars, datos$shelf, length)
+
+# Suma de cuadrados del tratamiento (SSTR)
+# CADA TRATAMIENTO SE ESCALA POR EL PESO CORRESPONDIENTE!
+SSTR <- sum(n_j * (medias_trat - media_global)^2)
+
+# Suma de cuadrados del error (SSE)
+SSE <- SST - SSTR
+
+# Imprimir los resultados
+cat("SST (Suma de Cuadrados Total):", SST, "\n")
+cat("SSTR (Suma de Cuadrados del Tratamiento):", SSTR, "\n")
+cat("SSE (Suma de Cuadrados del Error):", SSE, "\n")
+```
+
+# ANOVA de un factor para mfr
+
+```{r}
+data <- UScereal
+# Identify numeric columns in the dataset (we skip non-numeric variables)
+numeric_vars <- sapply(data, is.numeric)
+numeric_names <- names(data)[numeric_vars]
+
+# Loop over each numeric variable
+for (var in numeric_names) {
+  cat("## ANOVA for", var, "\n\n")
+  
+  # Build the formula dynamically
+  formula <- as.formula(paste(var, "~ mfr"))
+  
+  # Fit the ANOVA model
+  anova_model <- aov(formula, data = data)
+  
+  # Print the ANOVA summary
+  cat("**ANOVA Summary:**\n")
+  print(summary(anova_model))
+  
+  # Generate a boxplot to visualize group differences
+  boxplot(formula, 
+          data = data,
+          main = paste("Boxplot of", var, "by Manufacturer"),
+          xlab = "Manufacturer", 
+          ylab = var)
+  
+  # Reset the plotting area for diagnostic plots
+  par(mfrow = c(2, 2))
+  
+  # Plot diagnostic plots (e.g., residuals vs fitted, Normal Q-Q, etc.)
+  plot(anova_model, main = paste("Diagnostic Plots for", var))
+  
+  # Reset plotting parameters to default
+  par(mfrow = c(1, 1))
+  
+  cat("\n---\n\n")
+}
+
+
+```
+
+```{r}
+# transform shelf to factor
+UScereal$shelf = as.factor(UScereal$shelf)
+
+model = aov(potassium ~ mfr + shelf, data = UScereal)
+
+summary(model)
+plot(model)
+```
+
+

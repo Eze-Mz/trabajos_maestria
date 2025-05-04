@@ -1,0 +1,147 @@
+---
+title: "Trabajo final DEC"
+output: html_document
+date: "2024-08-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load data
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r read_csv}
+data <-  read.csv("~/PROYECTOS R/DATOS/Trabajo final DEC (datos) - datos.csv")
+data
+```
+
+```{r}
+names(data) <- c("edad", "sexo", "altura", "peso",  "BMP", "VEF1", "VR", "CRF", "CPT", "PEmax")
+data
+```
+
+```{r add IMC columns}
+#df <- cbind(df[, 1], new_col, df[, 2]
+peso_IMC <-  read.csv("~/PROYECTOS R/DATOS/Trabajo final DEC (datos) - peso_según_IMC.csv")    
+IMC <- as.numeric(gsub(",", ".", peso_IMC$IMC))
+cond_peso <- peso_IMC$Cond.peso
+
+data <- cbind(data[,0:5], IMC, cond_peso, data[,6:ncol(data)])
+
+data
+```
+
+```{r add nivel gravedad VEF1}
+# Define the breaks and labels for the categories
+breaks <- c(-Inf, 35, 50, 64, Inf)
+labels <- c("Muy grave", "Grave", "Moderado", "Leve")
+
+# Create the Category column using cut()
+# cut divides the range of x into intervals and codes the values in x according to which interval they fall. 
+help(cut)
+gravedad_VEF1 <- cut(data$VEF1, breaks = breaks, labels = labels, right = FALSE)
+
+data <- cbind(data[,0:8], gravedad_VEF1, data[,9:ncol(data)])
+
+data
+```
+
+# Summary
+
+## Metrics
+
+You can also embed plots, for example:
+
+```{r summary}
+subset_data <- subset(data, select = -c(sexo, cond_peso, gravedad_VEF1))
+
+# Calculate metrics for each column
+metrics_summary <- data.frame(
+  Mean = sapply(subset_data, mean),
+  Median = sapply(subset_data, median),
+  Min = sapply(subset_data, min),
+  Max = sapply(subset_data, max),
+  StdDev = sapply(subset_data, sd)
+)
+
+# Display the new data frame with metrics
+print(metrics_summary)
+```
+
+```{r}
+print(dim(data))
+colMeans(subset_data)
+```
+
+## Graphics
+
+```{r boxplots}
+library(tidyr)
+plot_data <- data[,10:ncol(data)]
+
+# Reshape the dataframe to long format
+df_long <- pivot_longer(plot_data, cols = everything(), names_to = "Variable", values_to = "Value")
+
+# Display the reshaped data
+print(df_long)
+
+ggplot(df_long, aes(x = Variable, y = Value, fill = Variable)) +
+  geom_boxplot() +
+  labs(title = "Boxplot",
+       x = "Variable",
+       y = "Value")
+
+```
+
+```{r BMP_x_VR}
+#help(plot)
+plot(data$BMP, data$VR, main = "Masa corporal por Volumen residual (aire luego de espiración)")
+```
+
+```{r IMC_x_VR}
+plot(data$IMC, data$VR, main = "Índice Masa corporal por Volumen residual (aire luego de espiración)")
+```
+
+# Regresión lineal
+
+```{r}
+help(lm)
+model <- lm(BMP ~ VEF1, data = data)
+summary(model)
+```
+
+```{r}
+# Create a scatter plot with the regression line
+ggplot(data, aes(x = IMC, y = VEF1)) +
+  geom_point() +  # Add points
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Add regression line
+  labs(title = "Linear Regression",
+       x = "IMC",
+       y = "VEF1") +
+  theme_minimal()
+```
+```{r}
+model <- lm(IMC ~ VR, data = data)
+summary(model)
+```
+```{r}
+# Create a scatter plot with the regression line
+ggplot(data, aes(x = IMC, y = VR)) +
+  geom_point() +  # Add points
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Add regression line
+  labs(title = "Linear Regression",
+       x = "IMC",
+       y = "VR") +
+  theme_minimal()
+```
+# ANAVA
+
+```{r}
+help(aov)
+model <- aov(VEF1 ~ cond_peso, data = data)
+summary(model)
+```
